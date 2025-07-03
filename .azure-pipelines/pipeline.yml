@@ -1,0 +1,56 @@
+trigger:
+- main
+
+variables:
+- group: vm-credentials   # Create this variable group in Azure DevOps
+
+stages:
+- stage: BuildAndTest
+  displayName: 'Build and Test'
+  jobs:
+  - job: Build
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - checkout: self
+
+    - task: Bash@3
+      displayName: 'Check if index.html exists'
+      inputs:
+        targetType: 'inline'
+        script: |
+          if [ ! -f ./app/index.html ]; then
+            echo "❌ index.html not found!"
+            exit 1
+          else
+            echo "✅ index.html found"
+          fi
+
+- stage: Deploy
+  displayName: 'Deploy to Azure VM'
+  dependsOn: BuildAndTest
+  condition: succeeded()
+  jobs:
+  - job: Deploy
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - task: InstallSSHKey@0
+      displayName: 'Install SSH Key'
+      inputs:
+        sshPublicKey: '$(vmKey)'
+        knownHostsEntry: '$(vmHost)'
+
+    - task: CopyFilesOverSSH@0
+      displayName: 'Copy Web Files to Azure VM'
+      inputs:
+        sshEndpoint: ''  # not using service connection here
+        sshEndpointDetails:
+          sshHost: '$(vmHost)'
+          sshUser: '$(vmUser)'
+          sshKey: '$(vmKey)'
+        sourceFolder: '$(Build.SourcesDirectory)/app'
+        contents: '**'
+        targetFolder: '/var/www/html'
+        cleanTargetFolder: false
+        overwrite: true
